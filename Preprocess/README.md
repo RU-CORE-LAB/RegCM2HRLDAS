@@ -219,7 +219,7 @@ domain=98,102,12.5,15
 outpath="./output"
 
 
-# model layr
+# model layer
 regcm2hrldas-atm -m ${model} -p ${scenario} -s ${sYR} -e ${eYR} -d ${domain} -i ${inpath} -o ${outpath}
 
 # single layer
