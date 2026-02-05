@@ -73,7 +73,7 @@ These tools cover atmospheric forcing, temporal processing, surface fluxes, and 
 Clone the repository from GitHub:
 ```bash
 git clone git@github.com:RU-CORE-LAB/RegCM2HRLDAS.git
-cd RegCM2HRLDAS
+cd RegCM2HRLDAS/Preprocess
 ```
 
 
