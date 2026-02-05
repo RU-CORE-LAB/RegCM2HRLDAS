@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "regcm2hrldas_tools"
+version = "0.1.0"
+description = "Tools for atmospheric forcing interpolation and RegCM setup file generation"
+authors = [{name = "Ratchanan Srisawadwong"}]
+readme = "README.md"
+requires-python = ">=3.10"
+
+dependencies = [
+    "xarray>=2025.6,<2026.0",
+    "numpy>=2.0,<3.0",
+    "pandas>=2.2,<3.0",
+    "netCDF4>=1.7,<2.0",
+    "dask>=2025.1,<2027.0",
+    "cftime>=1.6.5",
+    "scipy>=1.13,<2.0"
+]
+
+[project.scripts]
+interp1h = "srctools.interp1h:main"
+regcm2setupfile = "srctools.regcm2setupfile:main"
+regcm2hrldas-atm = "srctools.cli:atm_main"
+regcm2hrldas-srf = "srctools.cli:srf_main"
+regcm2hrldas-setup = "srctools.cli:setup_main"
+sigma2p_at_hPa = "srctools.utils:run_sigma2p_entry"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["srctools*"]
+
+
+[tool.setuptools]
+include-package-data = true
+
+
+[tool.setuptools.package-data]
+srctools = ["bin/sigma2p_at_hPa"]

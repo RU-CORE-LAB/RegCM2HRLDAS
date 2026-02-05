@@ -1,0 +1,3 @@
+recursive-include srctools/scripts *.sh
+recursive-include srctools/bin *
+
