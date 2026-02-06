@@ -5,9 +5,11 @@ This repository provides tools for converting RegCM output into HRLDAS-ready for
 ## Repository Structure
 
 - `Preprocess/` – RegCM → HRLDAS preprocessing tools
+
 https://github.com/RU-CORE-LAB/RegCM2HRLDAS/tree/main/Preprocess
   
 - `HRLDAS_forcing_regcm/` – Scripts for running HRLDAS using processed data
+
 https://github.com/RU-CORE-LAB/RegCM2HRLDAS/tree/main/HRLDAS_forcing_regcm
   
 - `Example_regcm2hrldas/` – Example workflows
