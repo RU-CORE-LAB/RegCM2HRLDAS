@@ -84,12 +84,21 @@ for fl in "${ls_file[@]}"; do
 
     # Step 1
     printf "Step 1: Spatial subset ... "
-    if cdo -s -O -setgridtype,lonlat -selvar,$select_vars -sellonlatbox,$dom "$fl" "$tmp_srf/$fname"; then
+    if cdo -s -O -f nc -setgridtype,lonlat -selvar,$select_vars -sellonlatbox,$dom "$fl" "$tmp_srf/$fname"; then
         printf "[OK]\n"
     else
         printf "[FAIL]\n"; continue
     fi
-
+    
+    # Step 2.1 (FIX nc4 → nc3 before ncrename)
+    printf "Step 2.1: Convert to NetCDF3 ... "
+    if cdo -s -O -f nc copy "$tmp_srf/$fname" "$tmp_srf/${fname}.nc3"; then
+        mv "$tmp_srf/${fname}.nc3" "$tmp_srf/$fname"
+        printf "[OK]\n"
+    else
+        printf "[FAIL]\n"; continue
+    fi
+    
     # Step 2
     printf "Step 2: Unit conversion ... "
     if ncap2 -O -s 'rlds=rlds*3600; rsds=rsds*3600; pr=pr*3.6' "$tmp_srf/$fname" "$tmp_srf/$fname"; then
