@@ -29,41 +29,67 @@ from functools import partial
 import cftime
 # *=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
 # N: Method for open dataset that different calendar.
-def nco_dataset(filename,geo_lat,geo_lon,time=None):
-    raw_data_file = xr.open_dataset(filename, engine="netcdf4", decode_times=True, use_cftime=True )
+def nco_dataset(filename, geo_lat, geo_lon, time=None):
+    raw_data_file = xr.open_dataset(
+        filename,
+        engine="netcdf4",
+        decode_times=True,
+        use_cftime=True
+    )
+
     if raw_data_file.latitude[0] > raw_data_file.latitude[-1]:
-        raw_data_file = raw_data_file.sortby('latitude')    
+        raw_data_file = raw_data_file.sortby('latitude')
+
     lat_min = float(geo_lat.min())
     lat_max = float(geo_lat.max())
     lon_min = float(geo_lon.min())
-    lon_max = float(geo_lon.max())    
-    data_var_raw = raw_data_file.sel(latitude=slice(lat_min, lat_max),longitude=slice(lon_min, lon_max))
+    lon_max = float(geo_lon.max())
+
+    data_var_raw = raw_data_file.sel(
+        latitude=slice(lat_min, lat_max),
+        longitude=slice(lon_min, lon_max)
+    )
+
+    
+    time_coord_name = [c for c in data_var_raw.coords if 'time' in c.lower()][0]
+    data_var_raw = data_var_raw.sortby(time_coord_name)
+
+    _, index = np.unique(data_var_raw[time_coord_name].values, return_index=True)
+    data_var_raw = data_var_raw.isel({time_coord_name: np.sort(index)})
+
     raw_lat = data_var_raw.latitude.values
     raw_lon = data_var_raw.longitude.values
-    
-    # --- Match calendar only if time is provided ---
+
     if time is not None:
+      sample_time = data_var_raw[time_coord_name].values[0]
+      CFTimeType = type(sample_time)
 
-        # Get time coordinate (time / valid_time / Times )
-        time_coord_name = [c for c in data_var_raw.coords if 'time' in c.lower()][0]
-        sample_time = data_var_raw[time_coord_name].values[0]
-        CFTimeType = type(sample_time)
-        cal_name = CFTimeType.__name__
+      y, m, d = time.year, time.month, time.day
+      h = getattr(time, "hour", 0)
+      mi = getattr(time, "minute", 0)
+      s = getattr(time, "second", 0)
 
-        y, m, d, h = time.year, time.month, time.day, time.hour
-
-        # --- NOLEAP ---
-        if cal_name == "DatetimeNoLeap" and m == 2 and d == 29:
-            d = 28
-
-        # --- 360_DAY ---
-        if cal_name == "Datetime360Day" and d > 30:
-            d = 30
-
-        time = CFTimeType(y, m, d, h)
-
+      if CFTimeType.__name__ == "DatetimeNoLeap":
+        # noleap don't have 29 Feb
+        if m == 2 and d == 29:
+            lookup_time = CFTimeType(y, 2, 28, h, mi, s)
+        else:
+            lookup_time = CFTimeType(y, m, d, h, mi, s)
     
-    return data_var_raw, raw_lat, raw_lon, time
+      elif CFTimeType.__name__ == "Datetime360Day":
+          # 360_day
+          # 
+          if d > 30:
+              lookup_time = CFTimeType(y, m, 30, h, mi, s)
+          else:
+              lookup_time = CFTimeType(y, m, d, h, mi, s)
+      
+      else:
+          lookup_time = CFTimeType(y, m, d, h, mi, s)
+    else:
+      lookup_time = None
+
+    return data_var_raw, raw_lat, raw_lon, lookup_time
 
 def floor_to_day_cf(t):
     return type(t)(t.year, t.month, t.day)
@@ -73,6 +99,7 @@ def floor_to_day_cf(t):
 def process_single_hour(time, gcm_name, scenario,  variables, geo_em_file, raw_data_dir, output_dir, levelist, ZLVL):
     import warnings
     warnings.filterwarnings("ignore")
+    output_time = time
     
     date = floor_to_day_cf(time)  # date = time.floor('D')
     geo_em = xr.open_dataset(geo_em_file)
@@ -92,9 +119,9 @@ def process_single_hour(time, gcm_name, scenario,  variables, geo_em_file, raw_d
             filename = os.path.join(raw_data_dir, f"{date.strftime('%Y%m')}_ssrd_strd_sp_tp_{gcm_name}_{scenario}_single_layer.nc")
             # *=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
             # call def nco_dataset()
-            data_vars_raw, raw_lat, raw_lon, time = nco_dataset(filename,geo_lat,geo_lon,time) 
+            data_vars_raw, raw_lat, raw_lon, lookup_time = nco_dataset(filename,geo_lat,geo_lon,time) 
             # *=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
-            val = data_vars_raw[var].sel(valid_time=time, method='nearest')[::-1].values
+            val = data_vars_raw[var].sel(valid_time=lookup_time , method='nearest')[::-1].values
             if variables[var]['name'] in ['LWDOWN', 'SWDOWN']:
                 data_var = val / 3600
             elif variables[var]['name'] in ['RAINRATE']:
@@ -108,14 +135,14 @@ def process_single_hour(time, gcm_name, scenario,  variables, geo_em_file, raw_d
             filename = os.path.join(raw_data_dir, f"{date.strftime('%Y%m')}_t_u_v_q_z_{levelist}_{gcm_name}_{scenario}_pressure_layer.nc")
             # *=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
             # call def nco_dataset()
-            data_vars_raw, raw_lat, raw_lon, time = nco_dataset(filename,geo_lat,geo_lon, time) 
+            data_vars_raw, raw_lat, raw_lon, lookup_time = nco_dataset(filename,geo_lat,geo_lon, time) 
             # *=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
-            t_raw = data_vars_raw[var].sel(valid_time=time, model_level=levelist, method='nearest').values[::-1, :]
+            t_raw = data_vars_raw[var].sel(valid_time=lookup_time , model_level=levelist, method='nearest').values[::-1, :]
             #
             # Use 'z' in pressure_layer file.
             # 'z' is already Geopotential Height (meters), not geopotential (m^2 s^-2),
             # so we must NOT divide by gravity (9.80665) again. 
-            z_raw = data_vars_raw['z'].sel(valid_time=time, model_level=levelist, method='nearest').values[::-1, :]
+            z_raw = data_vars_raw['z'].sel(valid_time=lookup_time , model_level=levelist, method='nearest').values[::-1, :]
             data_var_correct_to_msl = t_raw - (-0.0065 * z_raw )    # lapse rate ~ 6.5 K/km    
             # *=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*         
 
@@ -133,9 +160,9 @@ def process_single_hour(time, gcm_name, scenario,  variables, geo_em_file, raw_d
             filename = os.path.join(raw_data_dir, f"{date.strftime('%Y%m')}_t_u_v_q_z_{levelist}_{gcm_name}_{scenario}_pressure_layer.nc")
             # *=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
             # call def nco_dataset()
-            data_vars_raw, raw_lat, raw_lon, time = nco_dataset(filename,geo_lat,geo_lon, time) 
+            data_vars_raw, raw_lat, raw_lon, lookup_time = nco_dataset(filename,geo_lat,geo_lon, time) 
             # *=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
-            data_var = data_vars_raw[var].sel(valid_time=time, model_level=levelist, method='nearest')[::-1].values
+            data_var = data_vars_raw[var].sel(valid_time=lookup_time , model_level=levelist, method='nearest')[::-1].values
 
         if variables[var]['name'] in ['T2D']:
             # data_var_interpolated = mpl_toolkits.basemap.interp(data_var_correct_to_msl, 
@@ -162,12 +189,12 @@ def process_single_hour(time, gcm_name, scenario,  variables, geo_em_file, raw_d
 
 
     encoding=[{var: {'_FillValue': None}} for var in LDASIN_file.variables]    
-    output_filename = f"{time.strftime('%Y%m%d%H')}.LDASIN_DOMAIN{geo_em_file[-4]}"
+    output_filename = f"{output_time.strftime('%Y%m%d%H')}.LDASIN_DOMAIN{geo_em_file[-4]}"
     LDASIN_file.to_netcdf(os.path.join(output_dir, 'LDASIN', output_filename), encoding=encoding[0])
     print(output_filename)
 
-def create_LDASIN_files_parallel(start_date, end_date, raw_data_dir, output_dir, geo_em_file, gcm_name, scenario, levelist, ZLVL, calendar="gregorian", num_cores=1):
-
+def create_LDASIN_files_parallel(start_date, end_date, raw_data_dir, output_dir, geo_em_file, gcm_name, scenario, levelist, ZLVL, num_cores=1):
+   
     if not os.path.exists(output_dir+"/LDASIN"):
         os.makedirs(output_dir+"/LDASIN")
 
